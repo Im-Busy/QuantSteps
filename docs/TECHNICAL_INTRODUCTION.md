@@ -1,12 +1,16 @@
 # Investment Trying Lab — Technical Introduction
 
-> A deep-dive into the architecture, algorithms, and engineering decisions behind a 187,000-line research-grade quantitative trading system spanning pattern detection, machine learning, risk management, and AI-native infrastructure.
+> Architecture and algorithm notes for QuantSteps, a quantitative trading research toolkit spanning chart patterns, machine learning, backtesting and risk models.
+
+**Public-source review (2026-11-07):** the [README](../README.md) describes the current public scope. This document retains its reported May 2026 measurements and development-machine inventories as historical context. File/line counts, graph indexes and model artifacts below are not verified public-release inventories. Component availability does not establish production readiness, independent OOS validation or profitable deployment.
+
+**Known validation defect:** [`blind_analysis.py`](../src/ml/blind_analysis.py) trains its final model on nearly all holdout rows before scoring the whole holdout. Its `true_score` and `is_honest` result are not independent holdout evidence. See [evaluation limits](../README.md#evaluation-limits); this review changes documentation only.
 
 ---
 
 ## Table of Contents
 
-1. [Signal Generation: 54 Pattern Detectors](#1-signal-generation-54-pattern-detectors)
+1. [Signal Generation: Pattern Catalog](#1-signal-generation-pattern-catalog)
 2. [Pattern Aggregation & Scoring](#2-pattern-aggregation--scoring)
 3. [Machine Learning Pipeline](#3-machine-learning-pipeline)
 4. [Backtesting Engine](#4-backtesting-engine)
@@ -17,9 +21,9 @@
 
 ---
 
-## 1. Signal Generation: 54 Pattern Detectors
+## 1. Signal Generation: Pattern Catalog
 
-The system's primary alpha source is a catalog of **54 chart pattern detectors** across **10 categories**, each an implementation of `BasePattern` (`src/patterns/base.py:95-643`).
+The public source includes `BasePattern` implementations in `src/patterns/`. The package describes a baseline catalog of 54 patterns across 10 categories and also contains additional pattern modules. `RulesFirstStrategy._init_patterns()` selects a subset; the baseline catalog count does not describe every strategy's active signals.
 
 ### 1.1 Pattern Detector Interface
 
@@ -43,14 +47,14 @@ class BasePattern(ABC):
 
 **Key architectural decisions:**
 
-- **Per-bar detection** — `detect(df, i)` judges pattern presence at bar `i` using only data up to and including bar `i`. No forward-looking bias possible.
-- **Vectorized acceleration** — `detect_vectorized(df)` returns an `np.int8` array of `[-1, 0, +1]` for the entire dataset at once, delivering 50-100x speedup over per-bar iteration. Critical for backtesting 125+ instruments.
+- **Per-bar detection** — `detect(df, i)` is intended to evaluate bar `i`. The interface alone does not enforce point-in-time access; review each detector and preprocessing path for future-data use.
+- **Vectorized acceleration** — `detect_vectorized(df)` returns a signal array for the dataset. Historical notes reported 50-100x speedups over per-bar iteration; this review did not benchmark them.
 - **Precompute caching** — `precompute_signals(df)` calls `detect_vectorized()` once before any backtest and stores results in an O(1) dictionary lookup. The strategy's `_compute_score()` then reads from cache rather than re-running detection.
 - **ARRAY CACHING BY `id(df)`** — `_extract_arrays(df)` caches OHLCV NumPy arrays by DataFrame identity so repeated pattern detection on the same data avoids redundant extraction.
 - **IndicatorCache sharing** — `IndicatorCache` (`src/indicators/indicator_cache.py`) pre-computes shared indicators (ATR, RSI, MACD, ADX, EMAs) once and shares across all patterns, eliminating redundant computation in a 54-detector ensemble.
 - **TradeSignal contract** — `detect()` returns a `PatternResult` with detection metadata; `generate_signal()` produces a `TradeSignal` dataclass with `entry_price`, `stop_loss`, `take_profit_{1,2,3}`, and `confidence` (0.0-1.0). The backtest engine consumes `TradeSignal` directly, decoupling detection from execution.
 
-### 1.2 The 10 Categories
+### 1.2 Baseline Catalog Categories
 
 | # | Category | Detectors | Source |
 |---|----------|-----------|--------|
@@ -67,7 +71,7 @@ class BasePattern(ABC):
 
 ### 1.3 Reliability Weights
 
-Each detector carries a **reliability weight** sourced from academic research (NCFE Technical Analysis, Duddella's "Trade Chart Patterns Like the Pros") and empirically calibrated via the pattern evaluation gate:
+The rules-first strategy defines **reliability weights** in `PATTERN_RELIABILITY`, with NCFE/Duddella attribution, and can apply a separate quality registry. The historical examples below are scoring weights, not calibrated probabilities of profitable trades:
 
 | Tier | Weight Range | Example Patterns |
 |------|-------------|------------------|
@@ -92,7 +96,7 @@ The `RegimeDetector` (`src/indicators/regime_detector.py`) classifies each bar a
 
 ## 2. Pattern Aggregation & Scoring
 
-The core of the production strategy (`src/strategies/rules_first_strategy.py:331-386`) is `_compute_score(idx)`, which transforms 54 binary/ternary pattern signals into a single **bipolar score** for each bar.
+The core of the rules-first research strategy (`src/strategies/rules_first_strategy.py`) is `_compute_score(idx)`, which combines its enabled pattern signals into a **bipolar score** for each bar.
 
 ### 2.1 The Aggregation Formula
 
@@ -125,7 +129,7 @@ The `tanh` squash is critical — it bounds the score to a meaningful `[-1, +1]`
 
 ### 2.2 Configurable Weights and Gates
 
-The aggregation is parameterized by 15+ toggles, each independently validated:
+The strategy exposes optional weights and gates. The table describes selected defaults; inspect the source and CLI wiring for the configuration used in a particular experiment:
 
 | Parameter | Default | Effect |
 |-----------|---------|--------|
@@ -148,15 +152,15 @@ The strategy splits exit into two phases (`src/strategies/rules_first_strategy.p
 ```
 TP1 at entry + tp1_atr × ATR(14)        → closes tp1_size portion (default 50%)
 After TP1 hit:
-    move stop-loss to breakeven          → locks in profit on remaining 50%
+    move stop-loss to breakeven          → targets a breakeven exit on the remainder
 TP2 (remaining position)                  → managed by ATR trailing stop (default 3.0× ATR)
 ```
 
-Symmetric for short side. This **split-exit** design improved OOS Sharpe from +0.54 to +1.21 (+124%) on SPY 2025.
+Symmetric for short side. A historical SPY 2025 experiment reported OOS Sharpe from +0.54 to +1.21 (+124%) with this split-exit design. That comparison is not a general performance guarantee; execution costs and gaps can affect stop outcomes.
 
 ### 2.4 Pattern Quality Registry
 
-The `PatternQualityRegistry` (`src/signals/pattern_quality_registry.py`) gates patterns by empirical evaluation, preventing low-quality detectors from generating noise:
+The `PatternQualityRegistry` (`src/signals/pattern_quality_registry.py`) assigns multipliers from prior evaluation results:
 
 | Tier | Criteria | Weight Multiplier | Required Confluence |
 |------|----------|-------------------|---------------------|
@@ -165,7 +169,7 @@ The `PatternQualityRegistry` (`src/signals/pattern_quality_registry.py`) gates p
 | **FAIL_WEAK** | 0-1 steps passed | 0.30× | 3 (need 2+ companions) |
 | **ERROR** | Crash / no data | 0.00× (excluded) | — |
 
-With quality registry ON, SPY OOS Sharpe improves from +1.21 to +2.00 with 100% win rate on 8 trades.
+A historical SPY comparison reported OOS Sharpe from +1.21 to +2.00 and a 100% win rate on 8 trades with the quality registry enabled. Eight observed trades do not establish a reliable win probability or future result.
 
 ### 2.5 IR-Weighted Dynamic Reliability
 
@@ -180,7 +184,7 @@ Two modes:
 - **Gate mode**: IR < 0 → pattern excluded entirely (weight = 0)
 - **Scalar mode**: sigmoid(IR × 2) mapped to `[0.3, 0.7]` multiplier on base reliability
 
-Look-ahead safety: returns are shifted forward by 1 bar, so `IR` at bar `idx` uses `return[idx-1]` — the pattern's *past* forward returns, not future.
+Review the alignment of signal timestamps, realized returns and rolling weights for each use of IR weighting. A shifted return series alone does not establish that the complete pipeline avoids look-ahead.
 
 ---
 
@@ -200,7 +204,7 @@ Look-ahead safety: returns are shifted forward by 1 bar, so `IR` at bar `idx` us
 | **Regime** | ~12 | `adx`, `plus/minus_di`, `di_diff`, `adx_trend`, `ma_slope_N`, `price_vs_ma_N`, `vol_regime`, `trend_strength`, `vol_regime_state` (tercile) |
 | **Cross-Asset** | ~10 | Relative returns, `beta` to SPY/QQQ/TLT/GLD/XLE, cross-asset correlations |
 
-ATR computation uses `prev_close.shift(1)` rather than current close to prevent look-ahead bias.
+Feature calculations include shifted price series. Review their availability timestamps and keep forward-return label columns out of model inputs.
 
 ### 3.2 Triple-Barrier Labeling
 
@@ -230,23 +234,23 @@ This aligns training labels with actual trade mechanics — real trades exit whe
 | **FinCast** | Financial time-series forecaster | Domain-specific zero-shot |
 | **xLSTM** | Extended LSTM (128 hidden, 4 layers) | Sequence modeling |
 
-**CatBoost hyperparameters** (shallow, regularized to resist overfitting):
+**Historical CatBoost parameter example** (not the defaults of every entry point):
 
 | Parameter | Value | Rationale |
 |-----------|-------|-----------|
-| `iterations` | 500 | Enough to converge, not enough to memorize |
+| `iterations` | 500 | Training budget; does not establish resistance to memorization |
 | `depth` | 6 | Shallow — each split only uses 6 interactions |
 | `learning_rate` | 0.03 | Slow learning for noisy financial data |
 | `l2_leaf_reg` | 3.0 | Aggressive L2 regularization |
 | `random_strength` | 1.0 | Random score diffusion for tree diversity |
 | `bagging_temperature` | 1.0 | Bayesian bootstrap subsampling |
-| `min_data_in_leaf` | 20 | Minimum samples per leaf — blocks single-sample memorization |
+| `min_data_in_leaf` | 20 | Minimum samples per leaf; a regularization choice |
 | `subsample` | 0.8 | Train each tree on 80% of rows |
 | `colsample_bytree` | 0.8 | Train each tree on 80% of features |
 
 ### 3.4 Validation Pipeline
 
-The system uses a **PurgedKFold-like time-series split**, not standard K-fold, to prevent temporal data leakage:
+`PatternClassifier.train()` uses a chronological split with a configurable boundary purge:
 
 ```
 Data: [0 .... idx .... N-1]
@@ -257,9 +261,9 @@ Split:  X_train = X[0 : idx - purge_window]     ← purged boundary
         y_test  = y[idx : ]
 ```
 
-The `purge_window` (default 5 bars) excludes training samples near the boundary whose labels overlap with test-label forward-return windows. This prevents the most common form of overfitting in financial ML.
+The `purge_window` (default 5 bars) excludes training samples near the boundary. Its adequacy depends on label horizons and feature availability. This single split differs from the separate `PurgedKFold`, `CombinatorialPurgedCV` and `NestedPurgedCV` helpers; their presence does not prove every workflow uses them.
 
-**Walk-forward validation** runs expanding-window backtests across 125+ instruments with per-ticker Information Coefficient tracking.
+**Walk-forward workflows** support expanding-window experiments with per-ticker Information Coefficient tracking. Historical notes report runs across 125+ instruments; this review did not reproduce them or audit every split.
 
 ### 3.5 Isotonic Calibration
 
@@ -274,7 +278,7 @@ The calibrator maps raw model probabilities to empirically accurate probabilitie
 
 ### 3.6 Stability Selection
 
-Rather than trusting single-run feature importance, the system runs **N=100 bootstrap iterations** of CatBoost training on subsampled data. Only features that appear in the top-K of >50% of bootstrap runs are retained. This eliminates noise features that CatBoost assigns high importance by chance in any single run.
+The documented stability-selection experiment uses **N=100 bootstrap iterations** of CatBoost training on subsampled data and retains features that appear in the top-K of >50% of runs. This criterion can still retain noise and must be fitted within the training portion of an evaluation.
 
 ### 3.7 Meta-Labeling
 
@@ -282,11 +286,11 @@ A secondary CatBoost classifier (`src/ml/meta_labeler.py`) filters primary model
 
 > "Given that the primary model says BUY, what is the probability this specific BUY is actually profitable?"
 
-This improved IS Sharpe from 0.69 to 0.94 (+36%).
+A historical experiment reported IS Sharpe from 0.69 to 0.94 (+36%). That in-sample change does not establish an OOS improvement.
 
 ### 3.8 OOS Failure & Honest Diagnostics
 
-The ML model achieves IS Sharpe 0.85 but degrades to **Sharpe -1.24 OOS** (2025-2026). The diagnostic suite identified the root cause:
+The recorded ML experiment reported IS Sharpe 0.85 and **Sharpe -1.24 OOS** (2025-2026). Its diagnostic notes reported the following feature changes; they do not prove a unique cause:
 
 ```
 Feature:  vol_regime      → KS statistic = 0.81  (complete regime shift)
@@ -487,7 +491,7 @@ When testing 54+ patterns, random chance will produce false positives. The syste
 
 ### 6.6 VIF / PSI / KS / Gini — Model Validation (`src/ml/model_validation.py:1-300+`)
 
-Production monitoring for trained models:
+Diagnostic measures for trained-model experiments:
 
 | Metric | Threshold | Purpose |
 |--------|-----------|---------|
@@ -566,7 +570,7 @@ factor = rank(linear_combo([
 scores = evaluate(factor, ohlcv_df)
 ```
 
-The DSL **enforces point-in-time constraints** — only operators available at bar `t` are permitted (lag, ma, rank, zscore, log, abs, clip, sqrt, diff, pct_chg, linear_combo). A validator (`src/patterns/dsl/validator.py`) rejects expressions that access future data. This eliminates the single most common source of backtest overfitting — forward-looking factor construction.
+The DSL validator (`src/patterns/dsl/validator.py`) restricts allowed operators and arguments to support point-in-time factor construction. Those checks do not establish the timing of supplied data or the absence of leakage in downstream model selection and evaluation.
 
 ---
 
@@ -578,7 +582,7 @@ The DSL **enforces point-in-time constraints** — only operators available at b
 |------|---------|--------|
 | **uv** (Astral) | Package management, environment isolation, workspace support | `pyproject.toml`, `uv.lock` |
 | **ruff** | Linting + formatting | Line length 100, per-file E402 for scripts |
-| **mypy** | Static type checking | `python_version=3.13`, `ignore_missing_imports=true` |
+| **mypy** | Static type checking | `python_version=3.12`, `ignore_missing_imports=true` |
 | **Bandit** | Security analysis | Skips B101/B608 for pre-existing assert patterns |
 | **pre-commit** | Git hooks (ruff + mypy + Bandit) | `.pre-commit-config.yaml` |
 | **pytest** | Testing (66 files) | `testpaths=["tests"]`, `python_files=["test_*.py"]` |
@@ -651,7 +655,7 @@ The DSL **enforces point-in-time constraints** — only operators available at b
 
 ---
 
-## System Scale
+## Historical Development Scale (Reported 2026-05-18)
 
 | Metric | Value |
 |--------|-------|

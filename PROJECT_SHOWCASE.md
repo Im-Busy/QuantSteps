@@ -1,10 +1,12 @@
 # Investment Trying Lab — Project Showcase
 
-> A research-grade quantitative trading system integrating 97 academic papers, 54 chart pattern detectors, machine learning, and a custom event-driven backtesting engine.
+> QuantSteps is a quantitative trading research toolkit with chart patterns, rule-first strategies, machine learning experiments, risk models and backtesting workflows.
+
+**Public-source review (2026-11-07):** use the [README](README.md) for current public capabilities, setup and evaluation limits. The dated inventories, architecture sketch and experiment tables below preserve the development snapshot reported on 2026-05-18. Counts of papers, model artifacts, agents and indexed symbols are historical reports, not inventories verified in the public mirror. Performance figures describe selected experiments and have not been reproduced in this review.
 
 ---
 
-## At a Glance
+## Historical Development Inventory (2026-05-18)
 
 | Metric | Value |
 |--------|-------|
@@ -74,20 +76,23 @@
 
 ---
 
-## Key Technical Achievements
+## Research Components and Reported Experiments
 
 ### ML Pipeline (9-stage)
 - **Triple-barrier labeling** with dynamic take-profit/stop-loss from ATR
-- **Purged K-Fold CV** + **Combinatorial Purged CV** (CPCV) — proper time-series cross-validation
+- **Purged K-Fold CV** + **Combinatorial Purged CV** (CPCV) helpers for controlling overlap around evaluation folds; correct label horizons and data handling remain necessary
 - **Stability Selection** (N=100 bootstrap) replacing single-run feature importance
-- **Meta-labeling** — secondary CatBoost filter that improved Sharpe +36% (0.69→0.94)
+- **Meta-labeling** — secondary CatBoost filter; a historical experiment reported Sharpe +36% (0.69→0.94)
 - **Dynamic ensemble** — 5-model weighted ensemble with regime-awareness
-- **Isotonic calibration** — replaced buggy Platt scaling, improved ECE from 0.197 to 0.070, IS Sharpe from 0.59 to 0.85
+- **Isotonic calibration** — a historical experiment reported ECE from 0.197 to 0.070 and IS Sharpe from 0.59 to 0.85 after a calibration change
 - **Optuna Bayesian hyperparameter optimization** with multi-objective Pareto front
-- **Walk-forward validation** across 125+ tickers with per-ticker IC tracking
+- **Walk-forward workflows** with per-ticker IC tracking; historical notes describe runs across 125+ tickers
 - **Feature health monitoring** — KS drift tests, KL divergence, correlation flips, retrain recommendation
 
-### Pattern Detection (54 detectors, 10 categories)
+### Baseline Pattern Catalog
+
+This table records the historical catalog grouping and weights. The current public tree contains additional pattern modules, and each strategy chooses its active subset. The weights are scoring inputs, not calibrated probabilities of profitable trades.
+
 | Category | Patterns | Reliability Weights |
 |----------|----------|-------------------|
 | **Classic** | Double Top/Bottom, Triple Top/Bottom, Asc./Desc. Triangle, Rectangle, Wedge, Dead Cat Bounce, Trader Vic 2B | 0.75–0.87 (from NCFE/Duddella research) |
@@ -101,7 +106,7 @@
 | **Technical** | Ichimoku Cloud, Keltner Channel, Williams %R, CCI | 0.68–0.75 |
 | **Range Persistence** | PersistentRange, ContractingRange, ExpandingRange | 0.70–0.80 |
 
-### Feature Engineering (88 features)
+### Feature Engineering
 - **Price features**: returns, log returns, volatility (ATR-normalized after regime shift fix)
 - **Technical indicators**: MACD, RSI, Bollinger Bands, ADX, EMAs (multi-timeframe)
 - **Cross-asset**: relative returns, beta, correlation to SPY/QQQ/TLT/GLD/XLE
@@ -111,7 +116,7 @@
 - **Fractional differentiation** for stationarity without information loss
 
 ### Backtesting & Validation
-- **Custom event-driven engine** with realistic slippage, commission, and market hours
+- **Custom event-driven engine** with configurable slippage, commission and market-hours assumptions
 - **backtesting.py integration** for rapid strategy prototyping
 - **DSR (Deflated Sharpe Ratio)** — corrects for multiple testing bias
 - **PSR (Probabilistic Sharpe Ratio)** — probability that Sharpe exceeds threshold
@@ -121,21 +126,23 @@
 - **Synergy analysis** — detect pattern co-occurrence effects
 - **Walk-forward paper trading** — expanding-window OOS with feature recomputation
 
-### Best Backtest Results (SPY 2016–2024)
+### Historical Backtest Results (SPY 2016–2024)
 | Configuration | Return | Sharpe | Trades | Win Rate | PF | Max DD |
 |--------------|--------|--------|--------|----------|-----|--------|
 | ML + Trail Stop (et=0.45) | 81.0% | 0.73 | 66 | 43.9% | 1.65 | -17.5% |
 | ML + Trail + Meta-Label | 88.3% | 0.94 | 47 | 45.2% | 2.05 | -12.8% |
 | ML Retrained (B9-B14 fixes) | 60.8% | 1.03 | 18 | 61.1% | 2.82 | -8.8% |
 
-### OOS Challenge (Active Research)
-The ML model achieves Sharpe 0.85 in-sample but degrades to -1.24 out-of-sample (2025-2026). Root cause: 3/38 features flipped correlations, `vol_regime` KS=0.81 (complete regime shift). Current pivot: regime-adaptive ML + research-driven new signal sources.
+### Historical OOS Challenge
+The recorded ML experiment reported Sharpe 0.85 in-sample and -1.24 out-of-sample (2025-2026). Its diagnostics reported 3/38 features with flipped correlations and `vol_regime` KS=0.81. These observations motivated further regime and feature research; they do not prove a unique cause of the performance change.
+
+**Current evaluation limit:** `src/ml/blind_analysis.py` fits its final model on almost all holdout rows and then scores that same holdout. Its `true_score` and `is_honest` result do not establish blind OOS performance. LockBox and CV utilities elsewhere do not remove this contamination. See the [source-linked explanation](README.md#evaluation-limits). The implementation remains unchanged.
 
 ---
 
 ## Research Integration
 
-### Paper Coverage (97 papers)
+### Historical Paper Coverage (Reported 2026-05-18)
 | Topic | Papers | Implementation Status |
 |-------|--------|----------------------|
 | Time Series Forecasting | 35 | Partial (CatBoost, GARCH, Kalman, wavelet, VAR, ARIMA, ensemble, foundation model wrappers) |
@@ -163,7 +170,7 @@ The ML model achieves Sharpe 0.85 in-sample but degrades to -1.24 out-of-sample 
 
 ---
 
-## Infrastructure & Tooling
+## Historical Infrastructure & Tooling
 
 | Category | Tools |
 |----------|-------|
@@ -185,35 +192,20 @@ The ML model achieves Sharpe 0.85 in-sample but degrades to -1.24 out-of-sample 
 
 ---
 
-## What Makes This Impressive
+## Practical Research Uses
 
-1. **Research-to-production pipeline**: 97 academic papers → knowledge graph → gap analysis → prioritized implementation. Not just reading papers, but systematically extracting actionable insights (77 tracked in insight registry).
-
-2. **ML rigor**: PurgedKFold, CPCV, stability selection, meta-labeling, isotonic calibration, DSR/PSR/FDR — this isn't a toy model. These are the techniques from Marcos López de Prado's "Advances in Financial Machine Learning" and contemporary research.
-
-3. **Honest failure analysis**: The model doesn't generalize OOS. Instead of hiding this, the project has a full diagnostic suite (regime shift investigation, feature health monitoring, calibration audit) that identified the exact root cause (3 flipped features, `vol_regime` KS=0.81).
-
-4. **Pattern detection depth**: 54 detectors across 10 categories with reliability weights from academic research. Not just "if price > MA" — actual geometric pattern recognition, PineScript→Python conversions, and range-persistence signals from cutting-edge research.
-
-5. **AI-native workflow**: 6 specialized Kilo agents handle model diagnostics, backtesting, training, and repository management. 40 project-level skills. The autonomous training loop runs end-to-end with checkpointing and Optuna sweeps.
-
-6. **Production readiness**: 66 test files, pre-commit hooks (ruff + mypy + Bandit), type hints throughout 187K LOC, MLflow experiment tracking, model registry with 265 artifacts.
-
-7. **Cross-asset thinking**: Features span equities, bonds (TLT, IEF), gold (GLD), energy (XLE), crypto (BTC, ETH) — not just single-asset price data. The 125-instrument comprehensive batch proved that diverse tickers IMPROVE generalization.
+- Compare geometric chart patterns, indicator rules and optional ML filters through the strategy and backtest modules.
+- Inspect feature drift, calibration, ablations and statistical diagnostics alongside favorable and unfavorable experiment results.
+- Explore cross-asset features and portfolio/risk models with explicit data and cost assumptions.
+- Use the component tests as evidence of the behaviors they assert. Test files, tooling and stored artifacts alone do not establish production readiness or generalization.
 
 ---
 
-## Current Focus
+## Paper-Trading Research
 
-**Active track**: Phase 07 live paper trading — rules-first strategy with Quality Registry at Sharpe 2.00 OOS. System passed all 8 go/no-go criteria. Awaiting 14-day live protocol.
+The public source includes daily signal logging in `scripts/paper_trade_daily.py` and walk-forward paper-trading workflows. These generate hypothetical observations for further evaluation.
 
-**Planned tracks**:
-- 14-day live paper trading protocol (real-time signal generation, daily P&L tracking)
-- Training-history-based overfitting detection (5520 paper)
-- Synthetic OOS comparison framework (Backtest Overfitting paper)
-- Strategy decay monitoring & automatic retirement
-
-**Goal**: A trading system that generalizes across market regimes by combining multiple uncorrelated signal sources with disciplined risk management.
+The May 2026 notes reported a Quality Registry experiment at Sharpe 2.00 OOS and proposed a 14-day live paper-trading protocol. This documentation review does not establish that the protocol completed or that its criteria certify a deployable strategy. Preserve those results as historical experiment evidence and evaluate future periods separately.
 
 ---
 

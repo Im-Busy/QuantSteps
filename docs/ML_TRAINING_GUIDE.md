@@ -2,6 +2,10 @@
 
 > **Why this guide exists:** Machine learning in trading is complex. This document explains every component of our ML training stack in plain language — what it does, where it lives, when to use it, and how the pieces fit together. No PhD required.
 
+**Public-source review (2026-11-07):** this is a component guide, not evidence of profitable or production-ready models. Reported study results and local experiment metrics below are historical context; they do not establish expected results for this toolkit. Use the [README](../README.md) for current public scope and the selected script's source for supported CLI options.
+
+**Holdout-contamination limit:** [`blind_analysis.py`](../src/ml/blind_analysis.py) fits on nearly all holdout rows before scoring the same holdout. Its `true_score` and `is_honest` result must not be described as blind OOS validation. Other CV and LockBox utilities do not certify an entire workflow; review splitting, preprocessing, label timing and model selection for the specific experiment.
+
 ---
 
 ## The Big Picture
@@ -35,7 +39,7 @@ Every trade begins with raw price data (Open, High, Low, Close, Volume). The ML 
 **Key methods:**
 - `train(X, y)` — train on labeled data
 - `predict(X)` — get regime predictions
-- `train_with_purged_cv(X, y)` — proper time-series cross-validation (no data leaks)
+- `train_with_purged_cv(X, y)` — purged time-series CV; review label overlap and preprocessing for the chosen configuration
 
 ```bash
 # Train a regime classifier
@@ -127,7 +131,7 @@ print(ebm.summary())
 **What:** A unified scoring pipeline that wraps PatternClassifier. Adds per-pattern explainability.
 
 **When to use it:**
-- In production: score every detected pattern with a single call
+- In a research workflow: score detected patterns with a single call
 - For debugging: understand WHY a pattern was rejected
 
 **Key methods:**
@@ -246,7 +250,7 @@ What is your goal?
 
 ### 3a. Why CatBoost Everywhere? (Model Unification)
 
-All three classifiers now default to CatBoost. Research from 2024-2025 consistently shows CatBoost outperforming alternatives on financial tabular data:
+Several components default to CatBoost. The studies summarized below compare different tasks, datasets and metrics; their results do not establish that CatBoost outperforms alternatives in this project's trading workflows:
 
 | Study | Task | CatBoost | LightGBM | XGBoost | Random Forest |
 |-------|------|----------|----------|---------|---------------|
@@ -256,7 +260,7 @@ All three classifiers now default to CatBoost. Research from 2024-2025 consisten
 | CatBoost+LightGBM+LSTM paper | Investment prediction | R²: 0.788 | R²: 0.765 | — | — |
 | **3-model stacking** | Investment prediction | **R²: 0.815** | — | — | — |
 
-CatBoost wins because: handles categorical data natively, resists overfitting (ordered boosting), and needs the least tuning to reach peak performance. LightGBM is the runner-up. Random Forest is kept as a sanity-check baseline.
+CatBoost handles categorical features and offers regularization choices. Compare it with the alternatives supported by the selected component on the same evaluation split; backend availability differs between classifiers.
 
 ### 3b. EBM as Alpha Research Tool (NEW)
 
@@ -304,7 +308,7 @@ This is a **data-driven, auditable trading rule** — not an opaque model output
 
 ## 3c. The "Dream Team" Ensemble (Future)
 
-Research consistently shows that combining CatBoost + LightGBM via stacking yields 2-5% better accuracy than either alone. Key paper findings:
+The historical study summaries below motivate an ensemble experiment. They do not establish a 2-5% accuracy gain for QuantSteps:
 
 - **CatBoost + LightGBM + LSTM ensemble**: R² of 0.815 vs CatBoost alone at 0.788 (3.4% improvement)
 - **Stacking consensus**: "Hybrid ensemble approaches achieved the highest direction classification accuracy on SP500" (Springer Journal of Big Data)
@@ -319,8 +323,8 @@ This is tracked as task RS2 in the master plan for future implementation.
 | Term | Meaning |
 |------|---------|
 | **Overfitting** | The model memorized training data instead of learning patterns. Test score ≪ train score. |
-| **PurgedKFold** | Cross-validation that prevents data leakage in time series by removing samples near fold boundaries. |
-| **Walk-forward validation** | Train on past, predict on future — the only honest way to test time series models. |
+| **PurgedKFold** | Cross-validation that removes training samples near evaluation folds to reduce label-window overlap; the chosen purge span and other data handling still matter. |
+| **Walk-forward validation** | Train on earlier observations and evaluate later ones; keep preprocessing and model selection within the training window. |
 | **Information Coefficient (IC)** | Spearman correlation between predicted and actual returns. 0.0 = random, >0.03 = useful. |
 | **Silhouette score** | Measures how well clusters are separated. 0 to 1, higher is better. Used to find optimal n_regimes. |
 | **AUC** | Area Under ROC Curve. 0.5 = random coin flip, 1.0 = perfect classification. |

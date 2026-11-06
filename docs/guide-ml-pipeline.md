@@ -4,6 +4,10 @@
 > backtest, or validation task. This is the checklist — do all stages or document why
 > you skipped one.
 
+**Public-source review (2026-11-07):** these stages describe a research workflow. Individual scripts implement different subsets; a completed checklist does not certify a model or a data split. Read the [current README](../README.md) and inspect the selected entry point before using the older examples below.
+
+**Known evaluation defect:** [`src/ml/blind_analysis.py`](../src/ml/blind_analysis.py) fits on nearly all holdout rows before scoring the whole holdout. Do not use its `true_score` or `is_honest` flag as blind OOS evidence. Keep all feature selection, preprocessing, tuning and calibration inside the training data, and reserve independent evaluation observations.
+
 ---
 
 ## Pipeline Overview
@@ -43,7 +47,7 @@
 | **Output** | ~130 columns (price, momentum, volatility, volume, pattern shape, regime) |
 | **Cross-Asset** | `src/ml/cross_asset_features.py` → `CrossAssetFeatureExtractor` |
 | **Cross-asset call** | `load_market_data(df)` → `CrossAssetFeatureExtractor(market_data=...)` → `extract(df)` |
-| **Important** | All rolling windows use `.shift(1)` — backward-looking only, no look-ahead |
+| **Timing review** | Verify availability timestamps and rolling-window alignment for the selected features; exclude forward-return label columns from model inputs |
 | **Data needed** | Cross-asset requires `data/raw/{SPY,QQQ,TLT,GLD,IWM,XLF,XLK}_daily.csv` |
 
 ### [3] Label Generation

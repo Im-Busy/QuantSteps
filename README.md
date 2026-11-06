@@ -1,122 +1,115 @@
-# Investment Trying Lab (QuantSteps)
+# QuantSteps (Investment Trying Lab)
 
-**Production-grade, rule-first multi-pattern trading system.** 17-instrument verified basket, 100% OOS positive (mean Sharpe 1.135), Q2 2026. 27 completed phases, 300+ files, 35K+ GitNexus-indexed symbols.
+A Python research toolkit for rule-first quantitative trading: chart pattern detection, signal scoring, backtesting, ML and regime experiments, risk models, and paper-trading signals.
+
+The public source includes research components and experiment records. It does not establish production readiness or guarantee returns.
 
 ---
 
-## OOS Performance (Q2 2026 Re-Run)
+## Reported Experiments (Q2 2026)
 
-| Tier | Instruments | Allocation | Mean OOS Sharpe | Positive |
-|------|------------|------------|-----------------|----------|
-| **S** | XLK, XLE, GLD, SPY, SLV, QQQ | 60% | **+0.949** | 6/6 (100%) |
-| **A** | NUE, STLD, HAL, MPC, EOG | 25% | **+1.350** | 5/5 (100%) |
-| **B** | INTC, AMD, LMT, JNJ, MRK, NEM | 15% | **+1.143** | 6/6 (100%) |
-| **All** | 17 instruments | 100% | **+1.135** | **17/17 (100%)** |
+[BESTS.md](BESTS.md) reports a mean instrument Sharpe of **1.135** for a selected 17-instrument basket in a May 2026 re-run, with IS-to-OOS correlation of **-0.388**. Its summary and individual rows report 17/17 positive instruments, while its tier table lists tier B as 5/6 positive. That inconsistency needs reconciliation before reusing the positive-rate summary.
 
-IS→OOS correlation: **-0.388**. IS is anti-predictive — phoenix plays (IS negative → OOS positive) win. Bear market (2022-2026) survival: 12/18 (67%) OOS positive. See [BESTS.md](BESTS.md) for the full leaderboard.
+A separate 2022-2026 comparison reports 12/18 (67%) OOS-positive instruments. These figures were not reproduced in this documentation review. They describe selected historical runs, not expected returns, a verified portfolio Sharpe, or a general relationship between IS and OOS performance. The original leaderboard remains unchanged.
 
 ---
 
 ## Architecture
 
-```
-src/
-├── strategies/    59 files   Primary strategies (RulesFirst, Combined, ML, RegimeRouter, SMC) + 50+ indicator-based
-├── ml/            91 files   CatBoost/LightGBM pipeline, regime models (HMM/GMM/SVM/CNN), ensembles, GANs, overfitting guards
-├── signals/       41 files   Signal scoring, confluence, pattern reliability registry, factor purification
-├── indicators/    34 files   Numba-accelerated technicals, PineScript→Python helpers, SMC/ICT liquidity analysis
-├── patterns/      55 files   54 chart pattern detectors across 10 categories
-├── risk/          23 files   Position sizing, Kelly, circuit breakers, binomial VaR, diversity constraints
-├── optimization/   6 files   NSGA2, Two-Phase GA, Dynamic GA, skfolio (MV/CVaR/HRP)
-├── data/          10 files   Survivorship-free universe, options Greeks, congressional signals, futures inventory
-├── analysis/      12 files   Dual alpha/beta, divergence-in-bits, deflated Sharpe, post-backtest validation
-├── nlp/            6 files   SVM+TF-IDF/BiLSTM sentiment, Adanos cross-source API, ensemble
-├── features/       3 files   Wavelet feature preprocessor (3 SHAP Top-20 features)
-├── cli/            1 file    Option discovery CLI
-├── mcp/            1 file    MCP stock data server (3 tools for AI agents)
-├── backtest/       3 files   Custom event-driven engine
-├── portfolio/      2 files   Black-Litterman allocation, signal aggregation
-├── per_instrument/ 4 files   Config, timezone registry, performance tracker, strategy selector
-├── config/         4 files   System configuration
-└── utils/          6 files   Shared utilities
-```
+| Source area | Purpose |
+|-------------|---------|
+| [`src/patterns/`](src/patterns/) | Chart patterns, similarity search, recognition wrappers, factor DSL |
+| [`src/strategies/`](src/strategies/) | Rules-first, combined, ML, regime, SMC and indicator strategies |
+| [`src/signals/`](src/signals/) | Signal aggregation, quality registries, confluence and factor diagnostics |
+| [`src/indicators/`](src/indicators/) | Technical indicators, shared caches and SMC/ICT helpers |
+| [`src/ml/`](src/ml/) | Features, labeling, model training, regime models and evaluation helpers |
+| [`src/backtest/`](src/backtest/) | Custom event-driven backtesting |
+| [`src/risk/`](src/risk/) and [`src/portfolio/`](src/portfolio/) | Sizing, risk estimates, limits and allocation models |
+| [`src/optimization/`](src/optimization/) | Parameter search and portfolio optimization |
+| [`src/data/`](src/data/), [`src/features/`](src/features/) and [`src/nlp/`](src/nlp/) | Market-data helpers, derived features and sentiment experiments |
+| [`src/analysis/`](src/analysis/) | Attribution, ablation and statistical diagnostics |
+| [`scripts/`](scripts/) and [`tests/`](tests/) | CLI workflows and tests |
 
-**Key design principle: Rules-First over ML.** Pure rule-based production config (mr=0.70, et=0.55) delivers +1.135 mean OOS Sharpe. Every ML-augmented variant underperforms. ML is secondary validation only.
+**Rules-first baseline:** [`RulesFirstStrategy`](src/strategies/rules_first_strategy.py) combines pattern signals with reliability weights, entry/exit thresholds and optional gates. Compare ML additions against this baseline for the same data, costs and evaluation period.
 
 ---
 
-## Core Principles (Immutable)
+## Research Practices
 
-1. **Trail stop is non-negotiable.** Every config with trail stop outperforms no-trail by 2-4×.
-2. **Rules-First > ML for OOS robustness.** Rules survive regime shifts. ML degrades when stacked.
-3. **Mid-cap alpha.** $10-50B market cap is the sweet spot — above noise, below quant competition.
-4. **Calibration over model retraining.** Isotonic calibration (+44% Sharpe) and normalized ATR > new models.
-5. **IS is not predictive.** 9/11 instruments improved OOS vs IS. Never discard a strategy on IS alone.
-6. **min_confluence = 0.** Pattern agreement gating reduces trades without improving quality. Irrefutable: 100% of sweep chose 0.
-7. **ALL-ON signal stacking = saturation.** 13+ enhancers degraded Sharpe from 1.135 → 0.195. Add one flag at a time and validate OOS.
+- Compare exit rules, confluence thresholds and signal additions through controlled experiments.
+- Keep model selection, preprocessing and final evaluation data separate.
+- Include transaction-cost assumptions and report failures alongside favorable runs.
+- Treat instrument-selection rules and parameter sweeps as hypotheses to retest.
 
-See [BESTS_INSIGHTS.md](docs/BESTS_INSIGHTS.md) for the full distilled knowledge base.
+[BESTS_INSIGHTS.md](docs/BESTS_INSIGHTS.md) records conclusions from past experiments. Those conclusions depend on their data and configurations.
 
 ---
 
 ## System Capabilities
 
 ### Chart Pattern Detection
-54 detectors across 10 categories: basic, breakout, candlestick, classic, complex, continuation, harmonic, fmz, technical, range-persistence. Plus Faiss GPU similarity search and Patternity deterministic recognition wrapper.
+
+The catalog includes basic, breakout, candlestick, classic, complex, continuation, harmonic, FMZ, technical and range-persistence patterns, plus additional pattern modules, similarity search and a Patternity wrapper. Each strategy selects its own active subset; the catalog size is not the number of detectors enabled in every backtest.
 
 ### ML Infrastructure
-- **Training pipeline:** 9-stage pipeline with triple-barrier labeling, PurgedKFold, NestedPurgedCV, walk-forward optimization
-- **Overfitting guards:** LockBox blind holdout, Blind Analysis (scrambled-label tuning), Label Shuffling, Huber loss, MRE-gap analysis
-- **Models:** CatBoost, LightGBM, EBM, AutoGluon, pattern classifier (37-ticker trained), meta-labeler (AUC 0.633)
-- **Explainability:** SHAP dashboards, feature importance, stability selection (38/98 features pass)
-- **Regime detection:** HMM, GMM, HDBSCAN, SVM, CNN, change-point, ensemble, macro, path-signature (11 models)
-- **Generative:** TTS-GAN OHLCV augmentation, TadGAN anomaly detection, Chronos-2 LoRA fine-tuning, WaveletDiff
+
+- **Training and evaluation:** Feature extraction, triple-barrier labeling, purged and nested CV helpers, calibration, meta-labeling and walk-forward workflows.
+- **Models:** CatBoost, LightGBM, EBM and AutoGluon components, classifiers and ensembles.
+- **Explainability:** SHAP utilities, feature importance and stability selection.
+- **Regime experiments:** HMM, GMM, SVM, CNN, change-point, ensemble, macro and path-signature modules.
+- **Generative experiments:** OHLCV augmentation, anomaly detection and forecasting/fine-tuning modules. Model weights, hardware and data requirements vary.
 
 ### Risk & Position Sizing
+
 Kelly allocator, signal-strength dynamic sizing, VIX regime sizing, circuit breakers, daily loss limits, binomial VaR/CVaR, copula risk, diversity constraints, strategy-aware sizing, market impact estimation.
 
 ### Optimization
+
 NSGA2 multi-objective, Two-Phase GA (per-rule then ensemble), Dynamic GA (per-regime memory), skfolio (MV/CVaR/HRP/RiskBudget/InvVol).
 
 ### Data & Signals
-- **Alt data:** Congressional trade signals (House/Senate APIs), futures inventory, options Greeks, fund flow (MFM/OBV/A/D/EoM)
-- **Sentiment:** SVM+TF-IDF (82-94%), BiLSTM (128d embed), Adanos cross-source (Reddit/X/news/Polymarket), ensemble (93.4%)
-- **Fundamental:** 60+ ratios via FinanceDatabase+FinanceToolkit, ROCE/earnings-yield Magic Formula screening
-- **Cross-asset:** Sector map, VAR/Granger causality, Kalman hedge ratios, wavelet/FFT transforms
-- **Survivorship-bias-free:** Historical universe retains delisted tickers per date
-- **MCP server:** 3-tool stock data API for AI agents (get_price, get_technicals, get_multi)
+
+- **Alternative data:** Congressional signals, futures inventory, options and fund-flow helpers.
+- **Sentiment:** SVM/TF-IDF, BiLSTM and ensemble experiments, plus an Adanos API integration.
+- **Fundamentals:** Screening and financial-data helpers; provider availability and credentials affect usable data.
+- **Cross-asset:** Sector maps, VAR/Granger analysis, Kalman hedge ratios and wavelet/FFT transforms.
+- **Historical universes:** Point-in-time membership helpers; delisting coverage depends on the supplied data.
 
 ### Stock Selection
-11 hard filters (F1-F11) via centralized `docs/stock_selection_criteria.md`: market cap, daily volume, price, history, exchange, ETF AUM, leveraged products, ROCE, sector exclusions (Financials/Utilities). 9 desirability dimensions. 3 context tiers.
+
+The [stock selection criteria](docs/stock_selection_criteria.md) document market-cap, liquidity, price, history, exchange, ETF and sector filters for research baskets.
+
+## Evaluation Limits
+
+The presence of CV, label-shuffling or LockBox utilities does not establish that every experiment uses them correctly. LockBox tracks access through its object API; it is not an independent audit of an entire research workflow.
+
+**Known holdout contamination:** [`src/ml/blind_analysis.py`](src/ml/blind_analysis.py) fits the final model on `X_holdout.iloc[:-1]` and `y_holdout.iloc[:-1]` when the holdout has more than one row, then scores the whole holdout. Its `true_score` therefore includes training observations. Its `is_honest` flag and reported score must not be treated as blind or independent OOS validation. This documentation change does not repair that implementation.
 
 ---
 
 ## Quick Start
 
+Run from the repository root after installing [uv](https://github.com/astral-sh/uv). The backtest examples require local daily CSVs at `data/raw/SPY_daily.csv` and `data/raw/QQQ_daily.csv`, with a date index and `Open`, `High`, `Low`, `Close`, `Volume` columns covering the evaluation windows. This public snapshot does not include those data files; `uv sync` installs dependencies, not market history.
+
 ```bash
 # Install dependencies
 uv sync
 
-# Run rules-first backtest (production config)
-uv run scripts/backtest_rules_first.py SPY --start 2025-01-01 \
-    --entry-threshold 0.55 --min-reliability 0.70
+# Backtest one rules-first configuration
+uv run scripts/backtest_rules_first.py SPY --start 2025-01-01 --end 2025-12-31 --entry-threshold 0.55 --min-reliability 0.70
 
-# OOS re-run for 17-instrument basket
-$env:TQDM_DISABLE = "1"; uv run scripts/backtest_all_comprehensive.py \
-    --tickers XLK,XLE,GLD,SPY,SLV,QQQ,NUE,STLD,HAL,MPC,EOG,INTC,AMD,LMT,JNJ,MRK,NEM \
-    --period oos --use-best
+# Compare instruments using the comprehensive runner's configured date windows
+uv run scripts/backtest_all_comprehensive.py --tickers SPY,QQQ --use-best
 
-# Screen & backtest new ticker candidates
-uv run scripts/screen_and_backtest_10.py
-
-# Daily paper trading signals
-$env:PYTHONIOENCODING = "utf-8"; uv run scripts/paper_trade_daily.py --basket XLK,XLE,GLD,SPY,SLV,QQQ,NUE,STLD,HAL,MPC,EOG,INTC,AMD,LMT,JNJ,MRK,NEM,CN_CATL
-
-# Generate daily market report
-$env:PYTHONIOENCODING = "utf-8"; uv run scripts/daily_report_agent.py
+# Generate and log hypothetical daily signals
+uv run scripts/paper_trade_daily.py --basket SPY,QQQ
 ```
 
-Full command reference: [COMMAND_CHEATSHEET.md](docs/COMMAND_CHEATSHEET.md)
+The daily paper-signal workflow can fetch market data and create local logs. Examples were checked against source declarations, not executed in this review.
+
+The comprehensive runner declares `--period`, but its current `main()` calls `run_ticker()` without applying that option; do not use the flag to assert an OOS-only run.
+
+Full command reference: [COMMAND_CHEATSHEET.md](docs/COMMAND_CHEATSHEET.md). Check the target script for current options and prerequisites.
 
 ---
 
@@ -125,12 +118,14 @@ Full command reference: [COMMAND_CHEATSHEET.md](docs/COMMAND_CHEATSHEET.md)
 | Document | Purpose |
 |----------|---------|
 | [BESTS.md](BESTS.md) | Backtest leaderboard — all best results by configuration |
-| [BESTS_INSIGHTS.md](docs/BESTS_INSIGHTS.md) | Distilled knowledge: core principles, factor rankings, tier list, anti-patterns |
-| [COMMAND_CHEATSHEET.md](docs/COMMAND_CHEATSHEET.md) | Every CLI command with flags and examples |
+| [BESTS_INSIGHTS.md](docs/BESTS_INSIGHTS.md) | Historical experiment interpretations and hypotheses |
+| [PROJECT_SHOWCASE.md](PROJECT_SHOWCASE.md) | Project overview and historical development snapshot |
+| [TECHNICAL_INTRODUCTION.md](docs/TECHNICAL_INTRODUCTION.md) | Architecture notes with source-review qualifications |
+| [COMMAND_CHEATSHEET.md](docs/COMMAND_CHEATSHEET.md) | CLI reference; verify options against the target script |
 | [stock_selection_criteria.md](docs/stock_selection_criteria.md) | 11 hard filters + 9 desirability dimensions for ticker selection |
 | [ML_TRAINING_GUIDE.md](docs/ML_TRAINING_GUIDE.md) | ML components, decision tree, data flow, file location reference |
 | [guide-ml-pipeline.md](docs/guide-ml-pipeline.md) | Standard 9-stage ML training pipeline |
-| [guide-anti-overfitting.md](docs/guide-anti-overfitting.md) | LockBox, Nested CV, Blind Analysis, Label Shuffling |
+| [blind_analysis.py](src/ml/blind_analysis.py) | Experimental helper with the holdout-contamination limit described above |
 | [GPU_TASK_QUEUE.md](docs/GPU_TASK_QUEUE.md) | GPU-blocked tasks with self-contained tutorials |
 | [reference_phase28_external_tools.md](docs/reference_phase28_external_tools.md) | Indicators comparison, OpenStock architecture, WFGY evaluation |
 
@@ -138,43 +133,31 @@ Full command reference: [COMMAND_CHEATSHEET.md](docs/COMMAND_CHEATSHEET.md)
 
 ## Research & Knowledge Management
 
-- **Insight registry:** 116 insights from 34 sources in [insight_registry.md](docs/research_logic_map/insight_registry.md)
+- **Insight registry:** Research notes in [insight_registry.md](docs/research_logic_map/insight_registry.md)
 - **Web source registry:** Non-paper web sources with W-IDs in [web_source_registry.md](docs/research_logic_map/web_source_registry.md)
-- **Knowledge graph:** Auto-cross-references papers with project modules via `useful_resources/_knowledge_analysis.py`
-- **Paper2md pipeline:** Batch PDF→Markdown conversion + LLM summarization
-- **Source Attribution Protocol:** All external code/concepts carry mandatory `Source:`/`Reference:` docstrings (see AGENTS.md)
+- **Attribution:** Source references appear in module docstrings and research registries. A reference or wrapper is not evidence that the cited result has been reproduced here.
 
 ---
 
 ## Progress & Planning
 
-| Phase | Status |
-|-------|--------|
-| 01-08 | ✅ Complete (patterns, optimization, regime, ML, research, paper trading prep, attribution) |
-| 09-20 | ✅ Complete (backtest engine, advanced strategies, SMC/ICT, PineScript conversion) |
-| 21-25 | ✅ Complete (ML pipeline v3, anti-overfitting infra, signal enhancers, Perf tracking, 66-paper comparison) |
-| 26 | ✅ Complete (bear market validation, paper trading launch, 18-instrument basket) |
-| 27 | ✅ Complete (TTS-GAN, wavelet features, TadGAN, Chronos-2, WaveletDiff) |
-| 28 | 🔄 Active (22/27 tasks done, 33 insights from 4 external repos, ~6,480 LOC) |
-
-See [progress_docs/plans/full.md](progress_docs/plans/full.md) for the master plan (28 phases, 1,092 lines). Session log in [progress_docs/current.md](progress_docs/current.md).
+The [master plan](progress_docs/plans/full.md) and [session log](progress_docs/current.md) preserve development history. Their completion labels and development-machine inventories are not release or production-readiness certifications.
 
 ---
 
 ## Requirements
 
-- Python 3.13+
+- Project metadata specifies Python `>=3.12,<3.14`; dependency compatibility can narrow usable environments.
 - Package management via [uv](https://github.com/astral-sh/uv)
-- ~600MB disk (models + data cache)
+- Storage, GPU requirements and API access depend on the selected workflow and downloaded artifacts.
 
 ## Development
 
 ```bash
-uv sync                 # Install all deps
+uv sync --group dev     # Install declared dependencies and development tools
 uv run pytest           # Run test suite
 uv run ruff check .     # Lint
 uv run ruff format .    # Format
-npx gitnexus analyze    # Re-index code intelligence graph
 ```
 
-This project uses **GitNexus** (35K symbols, 56K relationships, 300 execution flows) and **CodeGraphContext** (Cypher graph) for code intelligence. Consult AGENTS.md for the code intelligence protocol.
+Tests cover individual components and workflows; no test suite, training job or benchmark was run for this documentation review.

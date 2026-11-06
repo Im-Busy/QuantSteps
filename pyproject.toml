@@ -1,7 +1,7 @@
 [project]
 name = "investment-trying"
 version = "0.1.0"
-description = "Trading Pattern Detection System"
+description = "Quantitative trading research toolkit for rule-first chart patterns, backtesting, ML regime experiments, risk analysis, and paper-trading signals"
 authors = [
     { name = "Your Name", email = "your.email@example.com" }
 ]
